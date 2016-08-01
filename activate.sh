@@ -24,8 +24,8 @@ autoenv_init()
     while [[ "$PWD" != "/" && "$PWD" != "$home" ]]
     do
       _file="$PWD/$AUTOENV_ENV_FILENAME"
-      if [[ -f "${_file}" ]]
-      then echo "${_file}"
+      if [[ -f "${_file}" ]]; then
+        echo "${_file}"
       fi
       builtin cd .. &>/dev/null
     done
@@ -40,6 +40,17 @@ autoenv_init()
   done
 
   IFS=$defIFS
+
+  # ## Automatic deactivation
+  #echo "----> PYVENV_ACTIVATED = $PYVENV_ACTIVATED <----"
+  #echo "----> WORKING_DIR = $WORKING_DIR <----"
+  if [[ -n "$PYVENV_ACTIVATED" ]]; then
+    if [[ ! "${PWD##$WORKING_DIR}" != "${PWD}" ]]; then
+      echo "Deactivating pyvenv..."
+      $DEACTIVATION_COMMAND
+      PYVENV_ACTIVATED=""
+    fi
+  fi
 }
 
 autoenv_run() {
@@ -80,10 +91,13 @@ autoenv_check_authz()
 
 autoenv_check_authz_and_run()
 {
+  # ## Automatic activation
+  ACTIVATION_FILE=bin/activate
   typeset envfile
   envfile=$1
   if autoenv_check_authz "$envfile"; then
-    autoenv_source "$envfile"
+    #autoenv_source "$envfile"
+    autoenv_source "$ACTIVATION_FILE"
     return 0
   fi
   if [[ -z $MC_SID ]]; then #make sure mc is not running
@@ -100,7 +114,8 @@ autoenv_check_authz_and_run()
     read answer
     if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
       autoenv_authorize_env "$envfile"
-      autoenv_source "$envfile"
+      #autoenv_source "$envfile"
+      autoenv_source "$ACTIVATION_FILE"
     fi
   fi
 }
@@ -120,14 +135,21 @@ autoenv_authorize_env() {
 }
 
 autoenv_source() {
-  typeset allexport
-  allexport=$(set +o | \grep allexport)
-  set -a
-  AUTOENV_CUR_FILE=$1
-  AUTOENV_CUR_DIR=$(dirname $1)
-  source "$1"
-  eval "$allexport"
-  unset AUTOENV_CUR_FILE AUTOENV_CUR_DIR
+  # If already activated, don't source again.
+  if [[ -z "$PYVENV_ACTIVATED" ]]; then
+    echo "Activating pyvenv..."
+    typeset allexport
+    allexport=$(set +o | \grep allexport)
+    set -a
+    AUTOENV_CUR_FILE=$1
+    AUTOENV_CUR_DIR=$(dirname $1)
+    source "$1"
+    eval "$allexport"
+    unset AUTOENV_CUR_FILE AUTOENV_CUR_DIR
+    WORKING_DIR="$(pwd)"
+    DEACTIVATION_COMMAND="deactivate"
+    PYVENV_ACTIVATED=true
+ fi
 }
 
 autoenv_cd()
