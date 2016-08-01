@@ -7,29 +7,16 @@ Magic per-project shell environments. Very pretentious.
 What is it?
 -----------
 
-If a directory contains a ``.env`` file, it will automatically be executed
-when you ``cd`` into it.
-
-This is great for...
-
-- auto-activating virtualenvs
-- project-specific environment variables
-- making millions
-
-`Foreman <https://github.com/ddollar/foreman>`_ env files are completely compatible.
-
-You can also nest envs within eachother. How awesome is that!?
+If a directory contains a ``pyvenv.cfg`` file, it will automatically activate
+when you ``cd`` into it. It will deactivate it if you ``cd ..``.
 
 Usage
 -----
 
 Follow the white rabbit::
 
-    $ touch project/.env
-    $ echo "echo 'woah'" > project/.env
-    $ cd project
-    woah
-
+    $ pyvenv my-fancy-project
+    $ cd my-fancy-project
 
 .. image:: http://media.tumblr.com/tumblr_ltuzjvbQ6L1qzgpx9.gif
 
@@ -37,7 +24,7 @@ Follow the white rabbit::
 Install
 -------
 
-Install it easily:
+Install it easily. It works with zsh too. Change ``.bashrc`` with ``.zshenv``:
 
 Mac OS X Using Homebrew
 ~~~~~~~~~~~~~~~~~~~~~~~
