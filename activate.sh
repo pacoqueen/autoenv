@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 AUTOENV_AUTH_FILE=~/.autoenv_authorized
 if [ -z "$AUTOENV_ENV_FILENAME" ]; then
-    AUTOENV_ENV_FILENAME=.env
+    #AUTOENV_ENV_FILENAME=.env
+    AUTOENV_ENV_FILENAME=pyvenv.cfg
 fi
 
 if [[ -n "${ZSH_VERSION}" ]]
