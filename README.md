@@ -1,10 +1,13 @@
-# Autoenv: Directory-based Environments ![Build Status](https://github.com/hyperupcall/autoenv/actions/workflows/ci.yml/badge.svg)
+# Autoenv: Directory-based Environments ![Build Status](https://github.com/pacoqueen/autoenv/actions/workflows/ci.yml/badge.svg)
 
 Magic per-project shell environments.
 
 ## What is it?
 
 If a directory contains an `.env` file, it will automatically be executed when you `cd` into it. And, if a directory contains an `.env.leave` file (and `AUTOENV_ENABLE_LEAVE` is a non-empty string), the file will automatically be executed when `cd`'ing away from the directory that contains that file.
+
+If a directory contains a ``pyvenv.cfg`` file, it will automatically activate
+when you `cd` into it. It will deactivate it if you `cd ..`. `.env` has priority over `pyvenv.cfg`.
 
 This is great for...
 
@@ -28,16 +31,23 @@ $ cd ./project
 whoa
 ```
 
+Or (`pyvenv.cfg` version):
+
+```
+$ python -m venv my-fancy-project
+$ cd my-fancy-project
+```
+
 ![Mind blown GIF](http://media.tumblr.com/tumblr_ltuzjvbQ6L1qzgpx9.gif)
 
 ## Installation (automated)
 
 ```sh
 # with cURL
-curl -#fLo- 'https://raw.githubusercontent.com/hyperupcall/autoenv/main/scripts/install.sh' | sh
+curl -#fLo- 'https://raw.githubusercontent.com/pacoqueen/autoenv/main/scripts/install.sh' | sh
 
 # with wget
-wget --show-progress -o /dev/null -O- 'https://raw.githubusercontent.com/hyperupcall/autoenv/main/scripts/install.sh' | sh
+wget --show-progress -o /dev/null -O- 'https://raw.githubusercontent.com/pacoqueen/autoenv/main/scripts/install.sh' | sh
 ```
 
 If you encounter some variant of a `curl: command not found` or `wget: command not found` error, please install either cURL or wget (with your package manager) and try again.
@@ -85,23 +95,23 @@ Prefer this if you're running Linux or an unsupported version of macOS. npm [mus
 <details>
 <summary>Click to expand content</summary>
 
-First, download the [@hyperupcall/autoenv](https://www.npmjs.com/package/@hyperupcall/autoenv) npm package:
+First, download the [@pacoqueen/autoenv](https://www.npmjs.com/package/@pacoqueen/autoenv) npm package:
 
 ```sh
-$ npm install -g '@hyperupcall/autoenv'
+$ npm install -g '@pacoqueen/autoenv'
 ```
 
 Then, execute one of the following to ensure autoenv is loaded when you open a terminal:
 
 ```sh
 # For Zsh shell (on Linux or macOS)
-$ printf '%s\n' "source $(npm root -g)/@hyperupcall/autoenv/activate.sh" >> "${ZDOTDIR:-$HOME}/.zprofile"
+$ printf '%s\n' "source $(npm root -g)/@pacoqueen/autoenv/activate.sh" >> "${ZDOTDIR:-$HOME}/.zprofile"
 
 # For Bash shell (on Linux)
-$ printf '%s\n' "source $(npm root -g)/@hyperupcall/autoenv/activate.sh" >> ~/.bashrc
+$ printf '%s\n' "source $(npm root -g)/@pacoqueen/autoenv/activate.sh" >> ~/.bashrc
 
 # For Bash shell (on macOS)
-$ printf '%s\n' "source $(npm root -g)/@hyperupcall/autoenv/activate.sh" >> ~/.bash_profile
+$ printf '%s\n' "source $(npm root -g)/@pacoqueen/autoenv/activate.sh" >> ~/.bash_profile
 ```
 
 </details>
@@ -116,7 +126,7 @@ Use this if you cannot install with Homebrew or npm.
 First, clone this repository:
 
 ```sh
-$ git clone 'https://github.com/hyperupcall/autoenv' ~/.autoenv
+$ git clone 'https://github.com/pacoqueen/autoenv' ~/.autoenv
 ```
 
 Then, execute one of the following to ensure autoenv is loaded when you open a terminal:
@@ -192,4 +202,5 @@ To update autoenv, see [`./docs/updating.md`](./docs/updating.md).
 
 ## Attributions
 
-Autoenv was originally created by [@kennethreitz](https://github.com/kennethreitz). Later, ownership was transfered to [@inishchith](https://github.com/inishchith). As of August 22nd, 2021, Edwin Kofler ([@hyperupcall](https://github.com/hyperupcall)) owns and maintains the project.
+Autoenv was originally created by [@kennethreitz](https://github.com/kennethreitz). Later, ownership was transfered to [@inishchith](https://github.com/inishchith). As of August 22nd, 2021, Edwin Kofler ([@hyperupcall](https://github.com/hyperupcall)) owns and maintains the original project.
+2016 & 2026, Paco Queen ([@pacoqueen](https://github.com/pacoqueen)) forked and added `pyvenv.cfg` support.
