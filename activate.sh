@@ -1,192 +1,439 @@
-#!/usr/bin/env bash
-AUTOENV_AUTH_FILE=~/.autoenv_authorized
-if [ -z "$AUTOENV_ENV_FILENAME" ]; then
-    #AUTOENV_ENV_FILENAME=.env
-    AUTOENV_ENV_FILENAME=pyvenv.cfg
-fi
+# shellcheck shell=sh
+# shellcheck disable=SC2216,SC3043
 
-if [[ -n "${ZSH_VERSION}" ]]
-then __array_offset=0
-else __array_offset=1
-fi
-
-autoenv_init()
-{
-  defIFS=$IFS
-  IFS=$(echo -en "\n\b")
-
-  typeset target home _file
-  typeset -a _files
-  target=$1
-  home="$(dirname $HOME)"
-
-  _files=( $(
-    while [[ "$PWD" != "/" && "$PWD" != "$home" ]]
-    do
-      _file="$PWD/$AUTOENV_ENV_FILENAME"
-      if [[ -f "${_file}" ]]; then
-        echo "${_file}"
-      fi
-      builtin cd .. &>/dev/null
-    done
-  ) )
-
-  _file=${#_files[@]}
-  while (( _file > 0 ))
-  do
-    envfile=${_files[_file-__array_offset]}
-    autoenv_check_authz_and_run "$envfile"
-    : $(( _file -= 1 ))
-  done
-
-  IFS=$defIFS
-
-  # ## Automatic deactivation
-  #echo "----> PYVENV_ACTIVATED = $PYVENV_ACTIVATED <----"
-  #echo "----> WORKING_DIR = $WORKING_DIR <----"
-  if [[ -n "$PYVENV_ACTIVATED" ]]; then
-    if [[ ! "${PWD##$WORKING_DIR}" != "${PWD}" ]]; then
-      echo "Deactivating pyvenv..."
-      $DEACTIVATION_COMMAND
-      PYVENV_ACTIVATED=""
-    fi
-  fi
-}
-
-autoenv_run() {
-  typeset _file
-  _file="$(realpath "$1")"
-  autoenv_check_authz_and_run "${_file}"
-}
-
-autoenv_env() {
-  builtin echo "autoenv:" "$@"
-}
-
-autoenv_printf() {
-  builtin printf "autoenv: "
-  builtin printf "$@"
-}
-
-autoenv_indent() {
- cat -e $@ | sed 's/.*/autoenv:     &/' 
-}
-
-autoenv_hashline()
-{
-  typeset envfile hash
-  envfile=$1
-  hash=$(autoenv_shasum "$envfile" | cut -d' ' -f 1)
-  echo "$envfile:$hash"
-}
-
-autoenv_check_authz()
-{
-  typeset envfile hash
-  envfile=$1
-  hash=$(autoenv_hashline "$envfile")
-  touch $AUTOENV_AUTH_FILE
-  \grep -Gq "$hash" $AUTOENV_AUTH_FILE
-}
-
-autoenv_check_authz_and_run()
-{
-  # ## Automatic activation
-  ACTIVATION_FILE=bin/activate
-  typeset envfile
-  envfile=$1
-  if autoenv_check_authz "$envfile"; then
-    #autoenv_source "$envfile"
-    autoenv_source "$ACTIVATION_FILE"
-    return 0
-  fi
-  if [[ -z $MC_SID ]]; then #make sure mc is not running
-    autoenv_env
-    autoenv_env "WARNING:"
-    autoenv_env "This is the first time you are about to source $envfile":
-    autoenv_env
-    autoenv_env "    --- (begin contents) ---------------------------------------"
-    autoenv_indent "$envfile"
-    autoenv_env
-    autoenv_env "    --- (end contents) -----------------------------------------"
-    autoenv_env
-    autoenv_printf "Are you sure you want to allow this? (y/N) "
-    read answer
-    if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
-      autoenv_authorize_env "$envfile"
-      #autoenv_source "$envfile"
-      autoenv_source "$ACTIVATION_FILE"
-    fi
-  fi
-}
-
-autoenv_deauthorize_env() {
-  typeset envfile
-  envfile=$1
-  \cp "$AUTOENV_AUTH_FILE" "$AUTOENV_AUTH_FILE.tmp"
-  \grep -Gv "$envfile:" "$AUTOENV_AUTH_FILE.tmp" > $AUTOENV_AUTH_FILE
-}
-
-autoenv_authorize_env() {
-  typeset envfile
-  envfile=$1
-  autoenv_deauthorize_env "$envfile"
-  autoenv_hashline "$envfile" >> $AUTOENV_AUTH_FILE
-}
-
-autoenv_source() {
-  # If already activated, don't source again.
-  if [[ -z "$PYVENV_ACTIVATED" ]]; then
-    echo "Activating pyvenv..."
-    typeset allexport
-    allexport=$(set +o | \grep allexport)
-    set -a
-    AUTOENV_CUR_FILE=$1
-    AUTOENV_CUR_DIR=$(dirname $1)
-    source "$1"
-    eval "$allexport"
-    unset AUTOENV_CUR_FILE AUTOENV_CUR_DIR
-    WORKING_DIR="$(pwd)"
-    DEACTIVATION_COMMAND="deactivate"
-    PYVENV_ACTIVATED=true
- fi
-}
-
-autoenv_cd()
-{
-  if builtin cd "$@"
-  then
-    autoenv_init
-    return 0
-  else
-    return $?
-  fi
-}
-
-enable_autoenv() {
-    cd() {
-        autoenv_cd "$@"
-    }
-
-    cd .
-}
-
-# probe to see if we have access to a shasum command, otherwise disable autoenv
-if which gsha1sum 2>/dev/null >&2 ; then
-    autoenv_shasum() {
-        gsha1sum "$@"
-    }
-    enable_autoenv
-elif which sha1sum 2>/dev/null >&2; then
-    autoenv_shasum() {
-        sha1sum "$@"
-    }
-    enable_autoenv
-elif which shasum 2>/dev/null >&2; then
-    autoenv_shasum() {
-        shasum "$@"
-    }
-    enable_autoenv
+if [ -n "${AUTOENV_AUTH_FILE:-}" ]; then
+	:
+elif [ -f "$HOME/.autoenv_authorized" ]; then
+	AUTOENV_AUTH_FILE="$HOME/.autoenv_authorized"
 else
-    echo "Autoenv cannot locate a compatible shasum binary; not enabling"
+	_autoenv_state_dir="$XDG_STATE_HOME"
+	case $_autoenv_state_dir in
+	/*) AUTOENV_AUTH_FILE="$_autoenv_state_dir/autoenv/authorized_list" ;;
+	*) AUTOENV_AUTH_FILE="$HOME/.local/state/autoenv/authorized_list" ;;
+	esac
+	unset -v _autoenv_state_dir
+fi
+if [ -n "${AUTOENV_NOTAUTH_FILE:-}" ]; then
+	:
+elif [ -f "$HOME/.autoenv_authorized" ]; then
+	# If `.autoenv_authorized` is in home, don't suprise the user by using XDG Base Dir.
+	AUTOENV_NOTAUTH_FILE="$HOME/.autoenv_not_authorized"
+elif [ -f "$HOME/.autoenv_not_authorized" ]; then
+	# Ensure file in ~/ is used, even if the authorized file has been moved or deleted.
+	AUTOENV_NOTAUTH_FILE="$HOME/.autoenv_not_authorized"
+else
+	_autoenv_state_dir="$XDG_STATE_HOME"
+	case $_autoenv_state_dir in
+	/*) AUTOENV_NOTAUTH_FILE="$_autoenv_state_dir/autoenv/not_authorized_list" ;;
+	*) AUTOENV_NOTAUTH_FILE="$HOME/.local/state/autoenv/not_authorized_list" ;;
+	esac
+	unset -v _autoenv_state_dir
+fi
+AUTOENV_ENV_FILENAME="${AUTOENV_ENV_FILENAME:-.env}"
+AUTOENV_ENV_LEAVE_FILENAME="${AUTOENV_ENV_LEAVE_FILENAME:-.env.leave}"
+: ${AUTOENV_VIEWER:=}
+# AUTOENV_ENABLE_LEAVE
+# AUTOENV_DISABLE_VENV
+
+__autoenv_use_color() {
+	if [ ${NO_COLOR+x} ]; then
+		return 1
+	fi
+	case ${FORCE_COLOR:-} in
+	1 | 2 | 3) return 0 ;;
+	0) return 1 ;;
+	esac
+	if [ "$TERM" = 'dumb' ]; then
+		return 1
+	fi
+	if [ -t 1 ]; then
+		return 0
+	fi
+
+	return 1
+}
+
+# @description Prints a user message to standard output
+# @internal
+_autoenv_print() {
+	local title="${1}" color="${2}" text="${3}"
+	# shellcheck disable=SC2059
+	if __autoenv_use_color; then
+		\printf "\033[${color}m[${title}]\033[0m ${text}"
+	else
+		\printf "[${title}] ${text}"
+	fi
+}
+
+# @description Prints a horizontal line
+# @args $1: title text to print near the beginning of the line
+# @internal
+_autoenv_draw_line() {
+	local text="${1:-}" char="-" width=${COLUMNS:-80} margin=3 line
+
+	if [ -n "${text}" ]; then
+		text="--- ${text} "
+	fi
+
+	width=$((width - ${#text} - margin))
+	line=$(\printf '%*s\n' ${width} | \command tr " " "${char}")
+
+	if __autoenv_use_color; then
+		\printf "\033[1m%s%s\033[0m\n" "${text}" "${line}"
+	else
+		\printf "%s%s\n" "${text}" "${line}"
+	fi
+}
+
+# @description Finds the closest directory (current or ancestor) that contains
+# both `pyvenv.cfg` and `bin/activate`. Prints its physical path.
+# @internal
+_autoenv_find_venv() {
+	local _dir
+	_dir=$(\builtin cd "${PWD}" 2>/dev/null && \pwd -P) || \return 1
+	while :; do
+		if [ -f "${_dir}/pyvenv.cfg" ] && [ -f "${_dir}/bin/activate" ]; then
+			\printf '%s\n' "${_dir}"
+			\return 0
+		fi
+		[ "${_dir}" = "/" ] && \break
+		_dir=$(\command dirname "${_dir}")
+	done
+	\return 1
+}
+
+# @description Sources a Python virtualenv activate script (used as a runner
+# by the authorization system) and remembers which venv was activated.
+# @internal
+autoenv_activate_venv() {
+	local _activate="${1}"
+	\printf '⚠ Activando pyvenv...\n'
+	set --
+	# shellcheck disable=SC1090
+	. "${_activate}"
+	AUTOENV_VENV_DIR="$(\command dirname "$(\command dirname "${_activate}")")"
+}
+
+# @description Activates/deactivates the Python virtualenv for the current directory
+# @internal
+autoenv_venv() {
+	if [ -n "${AUTOENV_DISABLE_VENV:-}" ]; then
+		\return 0
+	fi
+
+	local _venv=''
+	_venv=$(_autoenv_find_venv) || _venv=''
+
+	# Nothing changed
+	if [ "${_venv}" = "${AUTOENV_VENV_DIR:-}" ]; then
+		\return 0
+	fi
+
+	# Leaving a venv that we activated (or moving to another one)
+	if [ -n "${AUTOENV_VENV_DIR:-}" ]; then
+		if \command -v deactivate >/dev/null 2>&1; then
+			\printf '⚠ Desactivando pyvenv...\n'
+			deactivate
+		fi
+		\unset -v AUTOENV_VENV_DIR
+	fi
+
+	# Entering a venv: go through the authorization system first
+	if [ -n "${_venv}" ]; then
+		_autoenv_check_authz_and_run "${_venv}/bin/activate" autoenv_activate_venv "${_venv}/pyvenv.cfg"
+	fi
+}
+
+# @description Main initialization function
+# @internal
+autoenv_init() {
+	if [ -n "${AUTOENV_ENABLE_LEAVE:-}" ]; then
+		autoenv_leave "$@"
+	fi
+
+	local _mountpoint _pwd
+	_mountpoint="$(\command df -P "${PWD}" | \command tail -n 1 | \command awk '$0=$NF')"
+	_pwd=$(\echo "${PWD}" | \command sed -E 's:/+:/:g') # Removes double slashes. (see #125)
+
+	# Discover all files that we need to source.
+	local _files
+	_files=$(
+		\command -v chdir >/dev/null 2>&1 && \chdir "${_pwd}" || \builtin cd "${_pwd}"
+		_hadone=''
+		while :; do
+			_file="$(\pwd -P)/${AUTOENV_ENV_FILENAME}"
+			if [ -f "${_file}" ]; then
+				if [ -z "${_hadone}" ]; then
+					\printf %s "${_file}"
+					_hadone='1'
+				else
+					\printf %s "
+${_file}"
+				fi
+			fi
+			[ "$(\pwd -P)" = "${_mountpoint}" ] && \break
+			[ "$(\pwd -P)" = "/" ] && \break
+			\command -v chdir >/dev/null 2>&1 && \chdir "$(\pwd -P)/.." || \builtin cd "$(\pwd -P)/.."
+		done
+	)
+
+	# ZSH: Use traditional for loop
+	if [ -n "${ZSH_VERSION:-}" ]; then
+		\setopt shwordsplit >/dev/null 2>&1
+	fi
+
+	# Custom IFS
+	origIFS="${IFS}"
+	IFS='
+'
+
+	\set -f
+	# Turn around the env files order if needed
+	local _orderedfiles=''
+	if [ -z "${AUTOENV_LOWER_FIRST:-}" ]; then
+		for _file in ${_files}; do
+			_orderedfiles="${_file}
+${_orderedfiles}"
+		done
+	else
+		_orderedfiles="${_files}"
+	fi
+	# Execute the env files
+	for _file in ${_orderedfiles}; do
+		_autoenv_check_authz_and_run "${_file}"
+	done
+	\unset -v _orderedfiles
+	IFS="${origIFS}"
+	\set +f
+
+	# ZSH: Unset shwordsplit
+	if [ -n "${ZSH_VERSION:-}" ]; then
+		\unsetopt shwordsplit >/dev/null 2>&1
+	fi
+
+	# Python virtualenv: activate on enter, deactivate on leave
+	autoenv_venv
+}
+
+# @description Checks the expected hash entry of the file
+# @internal
+autoenv_hashline() {
+	local _envfile="${1}" _hash
+	_hash=$(autoenv_shasum "${_envfile}" | \command cut -d' ' -f 1)
+	\printf '%s\n' "${_envfile}:${_hash}"
+}
+
+# @description Source an env file if is able to do so
+# @args $1: file to run; $2: optional function used to run it (default: autoenv_source);
+#       $3: optional file whose contents are shown in the prompt (default: $1)
+# @internal
+_autoenv_check_authz_and_run() {
+	local _envfile="${1}" _runner="${2:-autoenv_source}" _viewfile="${3:-${1}}" _hash
+	_hash=$(autoenv_hashline "${_envfile}")
+
+	\command mkdir -p -- "$(\command dirname "${AUTOENV_AUTH_FILE}")" "$(\command dirname "${AUTOENV_NOTAUTH_FILE}")"
+	\command touch -- "${AUTOENV_AUTH_FILE}" "${AUTOENV_NOTAUTH_FILE}"
+	if \command grep -q "${_hash}" -- "${AUTOENV_AUTH_FILE}"; then
+		"${_runner}" "${_envfile}"
+		\return 0
+	elif \command grep -q "${_hash}" -- "${AUTOENV_NOTAUTH_FILE}"; then
+		\return 0
+	fi
+
+	# Don't ask for permission if "assume yes" is switched on
+	if [ -n "${AUTOENV_ASSUME_YES:-}" ]; then
+		autoenv_authorize_env "${_envfile}"
+		"${_runner}" "${_envfile}"
+		\return 0
+	fi
+
+	if [ -n "${MC_SID:-}" ]; then # Make sure mc is not running
+		\return 0
+	fi
+
+	if [ -z "$AUTOENV_VIEWER" ]; then
+		\echo "autoenv:"
+		\echo "autoenv: WARNING:"
+		\printf '%s\n' "autoenv: This is the first time you are about to source ${_envfile}":
+		\echo "autoenv:"
+		\echo "autoenv:   --- (begin contents) ---------------------------------------"
+		\cat -e "${_viewfile}" | LC_ALL=C \command sed 's/.*/autoenv:     &/'
+		\echo "autoenv:"
+		\echo "autoenv:   --- (end contents) -----------------------------------------"
+		\echo "autoenv:"
+		\printf "%s" "autoenv: Are you sure you want to allow this? (y/N/D) " # Keep (y/N/D) for old UI consistency.
+	else
+		_autoenv_print 'autoenv' 36 'New or modified env file detected\n'
+		_autoenv_draw_line "Contents of \"${_viewfile##*/}\""
+		local ofs="${IFS}"
+		IFS=" "
+		$AUTOENV_VIEWER "${_viewfile}"
+		IFS="${ofs}"
+		_autoenv_draw_line
+		_autoenv_print 'autoenv' 36 "Authorize this file? (y/n/d) "
+	fi
+	\read -r answer
+	if [ "${answer}" = "y" ] || [ "${answer}" = "Y" ]; then
+		autoenv_authorize_env "${_envfile}"
+		"${_runner}" "${_envfile}"
+	elif [ "${answer}" = "d" ] || [ "${answer}" = "D" ]; then
+		autoenv_unauthorize_env "${_envfile}"
+	fi
+}
+
+# @description Mark an env file as able to be sourced
+# @internal
+autoenv_deauthorize_env() {
+	local _envfile="${1}"
+	\command cp -- "${AUTOENV_AUTH_FILE}" "${AUTOENV_AUTH_FILE}.tmp"
+	\command grep -Gv "${_envfile}:" -- "${AUTOENV_AUTH_FILE}.tmp" >|"${AUTOENV_AUTH_FILE}"
+	\command rm -- "${AUTOENV_AUTH_FILE}.tmp" 2>/dev/null || :
+}
+
+# @description Mark an env file as not able to be sourced
+# @internal
+autoenv_unauthorize_env() {
+	local _envfile="$1"
+	autoenv_deauthorize_env "$_envfile"
+	autoenv_hashline "$_envfile" >>"$AUTOENV_NOTAUTH_FILE"
+}
+
+# @description Mark an env file as able to be sourced
+# @internal
+autoenv_authorize_env() {
+	local _envfile="${1}"
+	autoenv_deauthorize_env "${_envfile}"
+	autoenv_hashline "${_envfile}" >>"${AUTOENV_AUTH_FILE}"
+}
+
+# @description Actually source a file
+# @internal
+autoenv_source() {
+	AUTOENV_CUR_DIR="$(\command dirname "${1}")"
+	export AUTOENV_CUR_FILE="${1}" AUTOENV_CUR_DIR
+	case $- in
+	*a*) ;;
+	*)
+		\set -a
+		local __autoenv_set_allexport=yes
+		;;
+	esac
+
+	# shellcheck disable=SC1090
+	. "${1}"
+
+	if [ "${__autoenv_set_allexport:-}" = 'yes' ]; then
+		\set +a
+	fi
+	\unset -v AUTOENV_CUR_FILE AUTOENV_CUR_DIR
+}
+
+# @description Function to override the 'cd' builtin
+autoenv_cd() {
+	local _pwd="${PWD}"
+	if \command -v chdir >/dev/null 2>&1 && \chdir "${@}" || \builtin cd "${@}"; then
+		autoenv_init "${_pwd}"
+		\return 0
+	else
+		\return "${?}"
+	fi
+}
+
+# @description Cleanup autoenv
+autoenv_leave() {
+	local from_dir="${*}" to_dir
+	to_dir=$(\echo "${PWD}" | \command sed -E 's:/+:/:g')
+
+	# Discover all files that we need to source.
+	local _files
+	_files=$(
+		\command -v chdir >/dev/null 2>&1 && \chdir "${from_dir}" || \builtin cd "${from_dir}"
+		_hadone=''
+		while [ "$PWD" != "" ] && [ "$PWD" != "/" ]; do
+			case $to_dir/ in
+			$PWD/*)
+				\break
+				;;
+			*)
+				_file="$PWD/${AUTOENV_ENV_LEAVE_FILENAME}"
+				if [ -f "${_file}" ]; then
+					if [ -z "${_hadone}" ]; then
+						\printf %s "${_file}"
+						_hadone='1'
+					else
+						\printf %s "
+${_file}"
+					fi
+				fi
+				\command -v chdir >/dev/null 2>&1 && \chdir "$(\pwd)/.." || \builtin cd "$PWD/.."
+				;;
+			esac
+		done
+	)
+
+	# ZSH: Use traditional for loop
+	if [ -n "${ZSH_VERSION:-}" ]; then
+		\setopt shwordsplit >/dev/null 2>&1
+	fi
+
+	# Custom IFS
+	origIFS="${IFS}"
+	IFS='
+'
+
+	# Execute the env files
+	\set -f
+	for _file in ${_files}; do
+		_autoenv_check_authz_and_run "${_file}"
+	done
+	IFS="${origIFS}"
+	\set +f
+
+	# ZSH: Unset shwordsplit
+	if [ -n "${ZSH_VERSION:-}" ]; then
+		\unsetopt shwordsplit >/dev/null 2>&1
+	fi
+}
+
+# Set Zsh option to prevent errors when "cd" is already an alias.
+# shellcheck disable=SC3010
+if [ -n "${ZSH_VERSION:-}" ] && [[ ! -o aliasfuncdef ]]; then
+	__autoenv_unset_aliasfuncdef=yes
+	\setopt ALIAS_FUNC_DEF 2>/dev/null
+fi
+
+# @description Run to automatically replace the cd builtin with our improved one
+enable_autoenv() {
+	if [ -z "${AUTOENV_PRESERVE_CD:-}" ]; then
+		cd() {
+			autoenv_cd "${@}"
+		}
+	fi
+
+	cd "${PWD}"
+}
+
+if [ "${__autoenv_unset_aliasfuncdef:-}" = 'yes' ]; then
+	\unsetopt ALIAS_FUNC_DEF 2>/dev/null
+	\unset -v __autoenv_unset_aliasfuncdef
+fi
+
+# If some shasum exists, specifically use it. Otherwise, do not enable autoenv.
+if \command -v gsha1sum >/dev/null 2>&1; then
+	autoenv_shasum() {
+		gsha1sum "${@}"
+	}
+	enable_autoenv "$@"
+elif \command -v sha1sum >/dev/null 2>&1; then
+	autoenv_shasum() {
+		sha1sum "${@}"
+	}
+	enable_autoenv "$@"
+elif \command -v shasum >/dev/null 2>&1; then
+	autoenv_shasum() {
+		shasum "${@}"
+	}
+	enable_autoenv "$@"
+else
+	_autoenv_print 'autoenv error' 31 "can not locate a compatible shasum binary; not enabling\n" >&2
 fi
